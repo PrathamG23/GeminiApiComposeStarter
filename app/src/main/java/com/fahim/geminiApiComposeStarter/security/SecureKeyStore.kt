@@ -58,6 +58,10 @@ class SecureKeyStore(private val context: Context) {
         return ""
     }
 
+    suspend fun hasApiKey(): Boolean {
+        return getApiKey().isNotBlank()
+    }
+
     private fun getOrCreateSecretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (keyStore.containsAlias(KEY_ALIAS)) {

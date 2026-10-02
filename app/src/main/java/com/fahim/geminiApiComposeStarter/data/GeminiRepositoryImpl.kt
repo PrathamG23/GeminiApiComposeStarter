@@ -13,6 +13,10 @@ class GeminiRepositoryImpl(
     private val modelName: String = DEFAULT_MODEL,
 ) : GeminiRepository {
 
+    override suspend fun isApiKeyConfigured(): Boolean {
+        return secureKeyStore.hasApiKey()
+    }
+
     override suspend fun generateText(prompt: String): Result<String> {
         val apiKey = secureKeyStore.getApiKey()
         if (apiKey.isBlank()) {
