@@ -10,6 +10,11 @@
 -keep class androidx.datastore.** { *; }
 -keep class androidx.datastore.preferences.protobuf.** { *; }
 
+# Room Database & Entities
+-keep class * extends androidx.room.RoomDatabase
+-keep class com.fahim.geminiApiComposeStarter.data.local.** { *; }
+-dontwarn androidx.room.paging.**
+
 # Kotlin Serialization (used by Generative AI SDK)
 -keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
 -keepclassmembers class * {
