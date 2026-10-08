@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.fahim.geminiApiComposeStarter.data.GeminiRepository
+import com.fahim.geminiApiComposeStarter.data.history.ChatHistoryRepository
+import com.fahim.geminiApiComposeStarter.data.preferences.ThemeMode
+import com.fahim.geminiApiComposeStarter.data.preferences.UserPreferencesRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,6 +15,8 @@ import kotlinx.coroutines.launch
 
 class ChatViewModel(
     private val repository: GeminiRepository,
+    private val chatHistoryRepository: ChatHistoryRepository,
+    private val userPreferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -21,6 +26,8 @@ class ChatViewModel(
 
     init {
         checkApiKey()
+        loadHistory()
+        loadPreferences()
     }
 
     private fun checkApiKey() {
@@ -35,12 +42,64 @@ class ChatViewModel(
         }
     }
 
+    private fun loadHistory() {
+        viewModelScope.launch {
+            chatHistoryRepository.allMessages.collect { messages ->
+                _uiState.update { it.copy(messages = messages) }
+            }
+        }
+    }
+
+    private fun loadPreferences() {
+        viewModelScope.launch {
+            userPreferencesRepository.userPreferences.collect { prefs ->
+                _uiState.update {
+                    it.copy(
+                        themeMode = prefs.themeMode,
+                        dynamicColor = prefs.dynamicColor,
+                    )
+                }
+            }
+        }
+    }
+
     fun onPromptChange(value: String) {
         _uiState.update { it.copy(prompt = value, promptError = null) }
     }
 
     fun onDismissError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun onShowSpeechError(message: String) {
+        _uiState.update { it.copy(errorMessage = message) }
+    }
+
+    fun onShowClearHistoryDialog(show: Boolean) {
+        _uiState.update { it.copy(showClearHistoryDialog = show) }
+    }
+
+    fun onConfirmClearHistory() {
+        _uiState.update { it.copy(showClearHistoryDialog = false) }
+        viewModelScope.launch {
+            chatHistoryRepository.clearHistory()
+        }
+    }
+
+    fun onShowSettingsDialog(show: Boolean) {
+        _uiState.update { it.copy(showSettingsDialog = show) }
+    }
+
+    fun onSetThemeMode(themeMode: ThemeMode) {
+        viewModelScope.launch {
+            userPreferencesRepository.setThemeMode(themeMode)
+        }
+    }
+
+    fun onSetDynamicColor(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setDynamicColor(enabled)
+        }
     }
 
     fun onSend() {
@@ -60,7 +119,6 @@ class ChatViewModel(
 
         _uiState.update {
             it.copy(
-                messages = it.messages + userMessage,
                 prompt = "",
                 isLoading = true,
                 errorMessage = null,
@@ -68,7 +126,10 @@ class ChatViewModel(
             )
         }
 
-        executeGeneration(promptText)
+        viewModelScope.launch {
+            chatHistoryRepository.saveMessage(userMessage)
+            executeGeneration(promptText)
+        }
     }
 
     fun onRetry() {
@@ -88,25 +149,32 @@ class ChatViewModel(
 
     private fun executeGeneration(promptText: String) {
         viewModelScope.launch {
-            repository.generateText(promptText).fold(
-                onSuccess = { text ->
-                    val assistantMessage = ChatMessage(text = text, isUser = false)
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + assistantMessage,
-                            isLoading = false,
-                        )
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = error.message ?: "Something went wrong",
-                        )
-                    }
-                },
-            )
+            try {
+                repository.generateText(promptText).fold(
+                    onSuccess = { text ->
+                        val assistantMessage = ChatMessage(text = text, isUser = false)
+                        chatHistoryRepository.saveMessage(assistantMessage)
+                        _uiState.update { it.copy(isLoading = false) }
+                    },
+                    onFailure = { error ->
+                        val displayError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Failed to generate response. Please try again."
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = displayError,
+                            )
+                        }
+                    },
+                )
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = e.message ?: "An unexpected error occurred.",
+                    )
+                }
+            }
         }
     }
 
@@ -114,11 +182,18 @@ class ChatViewModel(
         const val MISSING_API_KEY_MESSAGE =
             "API key not configured. Add GEMINI_API_KEY to local.properties and rebuild."
 
-        fun factory(repository: GeminiRepository) =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    ChatViewModel(repository) as T
-            }
+        fun factory(
+            repository: GeminiRepository,
+            chatHistoryRepository: ChatHistoryRepository,
+            userPreferencesRepository: UserPreferencesRepository,
+        ) = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                ChatViewModel(
+                    repository = repository,
+                    chatHistoryRepository = chatHistoryRepository,
+                    userPreferencesRepository = userPreferencesRepository,
+                ) as T
+        }
     }
 }

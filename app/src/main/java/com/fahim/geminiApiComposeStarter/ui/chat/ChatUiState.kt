@@ -1,5 +1,7 @@
 package com.fahim.geminiApiComposeStarter.ui.chat
 
+import com.fahim.geminiApiComposeStarter.data.preferences.ThemeMode
+
 /** Immutable UI state for the chat screen. */
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -8,6 +10,10 @@ data class ChatUiState(
     val promptError: PromptError? = null,
     val errorMessage: String? = null,
     val isApiKeyConfigured: Boolean = true,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val dynamicColor: Boolean = true,
+    val showClearHistoryDialog: Boolean = false,
+    val showSettingsDialog: Boolean = false,
 )
 
 enum class PromptError { EMPTY }

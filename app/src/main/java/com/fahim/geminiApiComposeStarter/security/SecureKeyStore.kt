@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -18,6 +19,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "secure_key_store")
+private const val TAG = "SecureKeyStore"
 
 class SecureKeyStore(private val context: Context) {
 
@@ -26,6 +28,7 @@ class SecureKeyStore(private val context: Context) {
 
     /**
      * Decrypts and returns the Gemini API key in memory only when requested.
+     * If stored key is stale/invalid, clears it and re-encrypts from BuildConfig.
      * Never caches or logs the plaintext value.
      */
     suspend fun getApiKey(): String {
@@ -34,14 +37,18 @@ class SecureKeyStore(private val context: Context) {
         val iv = prefs[ivKey]
 
         if (!cipherText.isNullOrEmpty() && !iv.isNullOrEmpty()) {
-            return try {
-                decrypt(cipherText, iv)
+            try {
+                val decrypted = decrypt(cipherText, iv)
+                if (decrypted.isNotBlank()) {
+                    return decrypted
+                }
             } catch (e: Exception) {
-                ""
+                Log.w(TAG, "Decryption failed (${e.javaClass.simpleName}), clearing stale credentials")
+                clearStoredKey()
             }
         }
 
-        val buildConfigKey = BuildConfig.GEMINI_API_KEY
+        val buildConfigKey = BuildConfig.GEMINI_API_KEY.trim()
         if (buildConfigKey.isNotBlank()) {
             try {
                 val (encryptedText, encryptedIv) = encrypt(buildConfigKey)
@@ -51,6 +58,7 @@ class SecureKeyStore(private val context: Context) {
                 }
                 return buildConfigKey
             } catch (e: Exception) {
+                Log.e(TAG, "Encryption failed: ${e.javaClass.simpleName} - ${e.message}")
                 return buildConfigKey
             }
         }
@@ -60,6 +68,17 @@ class SecureKeyStore(private val context: Context) {
 
     suspend fun hasApiKey(): Boolean {
         return getApiKey().isNotBlank()
+    }
+
+    private suspend fun clearStoredKey() {
+        try {
+            context.dataStore.edit { preferences ->
+                preferences.remove(cipherTextKey)
+                preferences.remove(ivKey)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear stored key: ${e.javaClass.simpleName}")
+        }
     }
 
     private fun getOrCreateSecretKey(): SecretKey {

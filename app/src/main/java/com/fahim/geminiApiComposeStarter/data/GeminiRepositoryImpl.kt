@@ -20,7 +20,7 @@ class GeminiRepositoryImpl(
     override suspend fun generateText(prompt: String): Result<String> {
         val apiKey = secureKeyStore.getApiKey()
         if (apiKey.isBlank()) {
-            return Result.failure(IllegalStateException("API key not configured"))
+            return Result.failure(IllegalStateException("API key not configured. Please add GEMINI_API_KEY to local.properties and rebuild."))
         }
         return try {
             val model = GenerativeModel(modelName = modelName, apiKey = apiKey)
@@ -34,7 +34,7 @@ class GeminiRepositoryImpl(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "generateContent failed")
+            Log.e(TAG, "generateContent failed: ${e.javaClass.simpleName} - ${e.message}")
             Result.failure(e)
         }
     }

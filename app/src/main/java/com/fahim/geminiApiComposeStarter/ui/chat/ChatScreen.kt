@@ -1,6 +1,12 @@
 package com.fahim.geminiApiComposeStarter.ui.chat
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.res.Configuration
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,21 +23,32 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
@@ -41,16 +58,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fahim.geminiApiComposeStarter.R
+import com.fahim.geminiApiComposeStarter.data.preferences.ThemeMode
 import com.fahim.geminiApiComposeStarter.ui.text.toBoldAnnotatedString
 import com.fahim.geminiApiComposeStarter.ui.theme.GeminiApiComposeStarterTheme
 
@@ -67,9 +84,16 @@ fun ChatRoute(
         onSend = viewModel::onSend,
         onDismissError = viewModel::onDismissError,
         onRetry = viewModel::onRetry,
+        onShowSpeechError = viewModel::onShowSpeechError,
+        onShowClearHistoryDialog = viewModel::onShowClearHistoryDialog,
+        onConfirmClearHistory = viewModel::onConfirmClearHistory,
+        onShowSettingsDialog = viewModel::onShowSettingsDialog,
+        onSetThemeMode = viewModel::onSetThemeMode,
+        onSetDynamicColor = viewModel::onSetDynamicColor,
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     state: ChatUiState,
@@ -78,6 +102,12 @@ fun ChatScreen(
     onSend: () -> Unit,
     onDismissError: () -> Unit,
     onRetry: () -> Unit,
+    onShowSpeechError: (String) -> Unit,
+    onShowClearHistoryDialog: (Boolean) -> Unit,
+    onConfirmClearHistory: () -> Unit,
+    onShowSettingsDialog: (Boolean) -> Unit,
+    onSetThemeMode: (ThemeMode) -> Unit,
+    onSetDynamicColor: (Boolean) -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -105,6 +135,27 @@ fun ChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .imePadding(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                actions = {
+                    if (state.messages.isNotEmpty()) {
+                        IconButton(onClick = { onShowClearHistoryDialog(true) }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Clear chat history",
+                            )
+                        }
+                    }
+                    IconButton(onClick = { onShowSettingsDialog(true) }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                        )
+                    }
+                },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Box(
@@ -139,9 +190,97 @@ fun ChatScreen(
                     isApiKeyConfigured = state.isApiKeyConfigured,
                     onPromptChange = onPromptChange,
                     onSend = onSend,
+                    onShowSpeechError = onShowSpeechError,
                 )
             }
         }
+    }
+
+    if (state.showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { onShowClearHistoryDialog(false) },
+            title = { Text("Clear Chat History") },
+            text = { Text("Are you sure you want to delete all messages? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = onConfirmClearHistory) {
+                    Text("Clear", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onShowClearHistoryDialog(false) }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (state.showSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { onShowSettingsDialog(false) },
+            title = { Text("Settings") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Theme Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    ThemeMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = (state.themeMode == mode),
+                                    onClick = { onSetThemeMode(mode) },
+                                )
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = (state.themeMode == mode),
+                                onClick = { onSetThemeMode(mode) },
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = when (mode) {
+                                    ThemeMode.SYSTEM -> "System Default"
+                                    ThemeMode.LIGHT -> "Light Theme"
+                                    ThemeMode.DARK -> "Dark Theme"
+                                },
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Dynamic Color",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = "Use wallpaper colors (Android 12+)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = state.dynamicColor,
+                            onCheckedChange = onSetDynamicColor,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onShowSettingsDialog(false) }) {
+                    Text("Done")
+                }
+            },
+        )
     }
 }
 
@@ -324,7 +463,21 @@ private fun PromptBar(
     isApiKeyConfigured: Boolean,
     onPromptChange: (String) -> Unit,
     onSend: () -> Unit,
+    onShowSpeechError: (String) -> Unit,
 ) {
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                onPromptChange(spokenText)
+            }
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -336,7 +489,7 @@ private fun PromptBar(
             onValueChange = onPromptChange,
             modifier = Modifier
                 .weight(1f)
-                .padding(end = 8.dp),
+                .padding(end = 4.dp),
             label = { Text(stringResource(R.string.enter_your_prompt_here)) },
             minLines = 1,
             maxLines = 4,
@@ -346,6 +499,34 @@ private fun PromptBar(
                 { Text(stringResource(R.string.field_cannot_be_empty)) }
             },
         )
+
+        IconButton(
+            onClick = {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(
+                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                    )
+                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your prompt...")
+                }
+                try {
+                    speechLauncher.launch(intent)
+                } catch (e: ActivityNotFoundException) {
+                    onShowSpeechError("Speech recognition is not available on this device.")
+                }
+            },
+            enabled = !isLoading && isApiKeyConfigured,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_mic),
+                contentDescription = "Voice input",
+                tint = if (!isLoading && isApiKeyConfigured) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                },
+            )
+        }
 
         FilledIconButton(
             onClick = onSend,
@@ -439,12 +620,27 @@ private fun ChatScreenLoadingPreview() {
     }
 }
 
+@Preview(name = "Chat Screen Error", showBackground = true)
+@Composable
+private fun ChatScreenErrorPreview() {
+    val sampleState = ChatUiState(
+        messages = listOf(
+            ChatMessage(text = "What is the capital of France?", isUser = true),
+        ),
+        prompt = "What is the capital of France?",
+        isLoading = false,
+        errorMessage = "Network connection failed. Please try again.",
+    )
+    GeminiApiComposeStarterTheme {
+        ChatScreenPreviewContent(sampleState)
+    }
+}
+
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 private fun ChatScreenPreviewContent(state: ChatUiState) {
     val dummyWindowSizeClass = WindowSizeClass.calculateFromSize(
-        size = Size(1080f, 2400f),
-        density = LocalDensity.current,
+        size = DpSize(360.dp, 800.dp),
     )
     ChatScreen(
         state = state,
@@ -453,5 +649,11 @@ private fun ChatScreenPreviewContent(state: ChatUiState) {
         onSend = {},
         onDismissError = {},
         onRetry = {},
+        onShowSpeechError = {},
+        onShowClearHistoryDialog = {},
+        onConfirmClearHistory = {},
+        onShowSettingsDialog = {},
+        onSetThemeMode = {},
+        onSetDynamicColor = {},
     )
 }
