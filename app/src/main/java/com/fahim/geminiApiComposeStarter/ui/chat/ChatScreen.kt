@@ -128,8 +128,8 @@ fun ChatScreen(
     }
 
     val isCompact = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Compact
-    val maxContentWidth: Dp = if (isCompact) Dp.Unspecified else 800.dp
-    val bubbleMaxWidthFraction = if (isCompact) 0.85f else 0.70f
+    val maxContentWidth: Dp = remember(isCompact) { if (isCompact) Dp.Unspecified else 800.dp }
+    val bubbleMaxWidthFraction = remember(isCompact) { if (isCompact) 0.85f else 0.70f }
 
     Scaffold(
         modifier = Modifier
@@ -478,6 +478,9 @@ private fun PromptBar(
         }
     }
 
+    val isInputEnabled = remember(isLoading, isApiKeyConfigured) { !isLoading && isApiKeyConfigured }
+    val isSendEnabled = remember(isLoading, prompt, isApiKeyConfigured) { !isLoading && prompt.isNotBlank() && isApiKeyConfigured }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -493,7 +496,7 @@ private fun PromptBar(
             label = { Text(stringResource(R.string.enter_your_prompt_here)) },
             minLines = 1,
             maxLines = 4,
-            enabled = !isLoading && isApiKeyConfigured,
+            enabled = isInputEnabled,
             isError = promptError != null,
             supportingText = promptError?.let {
                 { Text(stringResource(R.string.field_cannot_be_empty)) }
@@ -515,12 +518,12 @@ private fun PromptBar(
                     onShowSpeechError("Speech recognition is not available on this device.")
                 }
             },
-            enabled = !isLoading && isApiKeyConfigured,
+            enabled = isInputEnabled,
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_mic),
                 contentDescription = "Voice input",
-                tint = if (!isLoading && isApiKeyConfigured) {
+                tint = if (isInputEnabled) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
@@ -530,7 +533,7 @@ private fun PromptBar(
 
         FilledIconButton(
             onClick = onSend,
-            enabled = !isLoading && prompt.isNotBlank() && isApiKeyConfigured,
+            enabled = isSendEnabled,
         ) {
             if (isLoading) {
                 CircularProgressIndicator(

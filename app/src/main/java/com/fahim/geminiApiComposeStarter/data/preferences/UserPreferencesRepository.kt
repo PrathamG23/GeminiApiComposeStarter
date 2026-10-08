@@ -12,12 +12,18 @@ import kotlinx.coroutines.flow.map
 
 private val Context.userPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(name = "user_preferences")
 
-class UserPreferencesRepository(private val context: Context) {
+interface UserPreferencesRepository {
+    val userPreferences: Flow<UserPreferences>
+    suspend fun setThemeMode(themeMode: ThemeMode)
+    suspend fun setDynamicColor(enabled: Boolean)
+}
+
+class UserPreferencesRepositoryImpl(private val context: Context) : UserPreferencesRepository {
 
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val dynamicColorKey = booleanPreferencesKey("dynamic_color")
 
-    val userPreferences: Flow<UserPreferences> = context.userPreferencesDataStore.data.map { prefs ->
+    override val userPreferences: Flow<UserPreferences> = context.userPreferencesDataStore.data.map { prefs ->
         val themeModeName = prefs[themeModeKey] ?: ThemeMode.SYSTEM.name
         val themeMode = try {
             ThemeMode.valueOf(themeModeName)
@@ -28,13 +34,13 @@ class UserPreferencesRepository(private val context: Context) {
         UserPreferences(themeMode = themeMode, dynamicColor = dynamicColor)
     }
 
-    suspend fun setThemeMode(themeMode: ThemeMode) {
+    override suspend fun setThemeMode(themeMode: ThemeMode) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[themeModeKey] = themeMode.name
         }
     }
 
-    suspend fun setDynamicColor(enabled: Boolean) {
+    override suspend fun setDynamicColor(enabled: Boolean) {
         context.userPreferencesDataStore.edit { prefs ->
             prefs[dynamicColorKey] = enabled
         }

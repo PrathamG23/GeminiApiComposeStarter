@@ -14,7 +14,7 @@ import com.fahim.geminiApiComposeStarter.data.GeminiRepositoryImpl
 import com.fahim.geminiApiComposeStarter.data.history.ChatHistoryRepositoryImpl
 import com.fahim.geminiApiComposeStarter.data.local.ChatDatabase
 import com.fahim.geminiApiComposeStarter.data.preferences.ThemeMode
-import com.fahim.geminiApiComposeStarter.data.preferences.UserPreferencesRepository
+import com.fahim.geminiApiComposeStarter.data.preferences.UserPreferencesRepositoryImpl
 import com.fahim.geminiApiComposeStarter.security.SecureKeyStore
 import com.fahim.geminiApiComposeStarter.ui.chat.ChatRoute
 import com.fahim.geminiApiComposeStarter.ui.chat.ChatViewModel
@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         val secureKeyStore = SecureKeyStore(applicationContext)
         val chatDatabase = ChatDatabase.getInstance(applicationContext)
         val chatHistoryRepository = ChatHistoryRepositoryImpl(chatDatabase.chatDao())
-        val userPreferencesRepository = UserPreferencesRepository(applicationContext)
+        val userPreferencesRepository = UserPreferencesRepositoryImpl(applicationContext)
 
         ChatViewModel.factory(
             repository = GeminiRepositoryImpl(secureKeyStore = secureKeyStore),
